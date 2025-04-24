@@ -84,6 +84,93 @@ public with sharing class PropertyWareAPIUtility implements Schedulable, Databas
         ////Need to Select buildings by PW Id
     }
 
+    public static void syncBuildingsFromPW(List<PWBuilding> buildings) {
+        for (PWBuilding building : buildings) {
+            // Step 1: Ensure Portfolio Exists or Create It
+            PW_Portfolio__c portfolio = getOrCreatePortfolio(building);
+
+            // Step 2: Ensure House Exists or Create It
+            House__c house = getOrCreateHouse(building);
+
+            // Step 3: Check if PW Building exists
+            PW_Building__c existingBuilding = getBuildingByEntityId(building.BuildingEntityId);
+            if (existingBuilding == null) {
+                PW_Building__c newBuilding = new PW_Building__c(
+                    Name = building.Name,
+                    PW_Status__c = building.Status,
+                    PW_Active__c = building.Active,
+                    PW_Building_Market__c = building.Market,
+                    PW_Address__c = building.Address,
+                    PW_City__c = building.City,
+                    PW_State__c = building.State,
+                    PW_Zip__c = building.Zip,
+                    PW_Year_Built__c = building.YearBuilt,
+                    PW_Bedrooms__c = building.Bedrooms,
+                    PW_Bathrooms__c = building.Bathrooms,
+                    PW_Building_Entity_ID__c = building.BuildingEntityId,
+                    PW_Portfolio_Entity_ID__c = building.PortfolioEntityId,
+                    PW_Building_ID_Number__c = building.BuildingIdNumber,
+                    House__c = house.Id,
+                    PW_Portfolio__c = portfolio.Id
+                );
+                insert newBuilding;
+            }
+        }
+    }
+
+    private static PW_Portfolio__c getOrCreatePortfolio(PWBuilding building) {
+        List<PW_Portfolio__c> existing = [
+            SELECT Id FROM PW_Portfolio__c WHERE PW_Portfolio_Entity_ID_Number__c = :building.PortfolioEntityId LIMIT 1
+        ];
+        if (!existing.isEmpty()) return existing[0];
+
+        String orgName = (building.PWOrg == 'PPMG Texas') ? 'PPMG of Texas, LLC' : 'Premier Property Management Group';
+        PW_Portfolio__c portfolio = new PW_Portfolio__c(
+            Name = building.PortfolioName,
+            PW_Portfolio_Entity_ID_Number__c = building.PortfolioEntityId,
+            PW_Active__c = building.Active,
+            PW_Org__c = orgName
+        );
+        insert portfolio;
+        return portfolio;
+    }
+
+    private static House__c getOrCreateHouse(PWBuilding building) {
+        String fullAddress = building.Address + ', ' + building.City + ', ' + building.State + ' ' + building.Zip;
+        String placeId = GooglePlacesService.getPlaceIdFromAddress(fullAddress);
+
+        List<House__c> existing = [
+            SELECT Id FROM House__c WHERE Google_Place_ID__c = :placeId LIMIT 1
+        ];
+        if (!existing.isEmpty()) return existing[0];
+
+        House__c house = new House__c(
+            Market__c = building.Market,
+            Name = building.Name,
+            Street_Address__c = building.Address,
+            City__c = building.City,
+            State__c = building.State,
+            Zip__c = building.Zip,
+            House_Type__c = building.PropertyType,
+            Bedrooms__c = building.Bedrooms,
+            Bathrooms__c = building.Bathrooms,
+            Car_Storage__c = null, // Set as needed
+            Sq_Feet__c = building.TotalArea,
+            Year_Built__c = building.YearBuilt,
+            Status__c = 'Managed',
+            Google_Place_ID__c = placeId
+        );
+        insert house;
+        return house;
+    }
+
+    private static PW_Building__c getBuildingByEntityId(String entityId) {
+        List<PW_Building__c> records = [
+            SELECT Id FROM PW_Building__c WHERE PW_Building_Entity_ID__c = :entityId LIMIT 1
+        ];
+        return records.isEmpty() ? null : records[0];
+    }
+
 
     public class PWBuildingWrapper {
         public String id;
